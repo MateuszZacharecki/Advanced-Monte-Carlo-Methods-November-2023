@@ -1,0 +1,619 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+set.seed(313549)
+library(microbenchmark)
+
+```
+
+# Box-Müller algorithm
+
+```{r}
+box_muller <- function(n, niu = 0, sigma = 1)
+{
+  stopifnot(sigma > 0)
+  stopifnot(is.numeric(niu))
+  stopifnot(length(n) == 1)
+  
+  u1 <- runif(n, 0, 1)
+  u2 <- runif(n, 0, 1)
+  
+  z1 <- sqrt(-2*log(u1))*cos(2*pi*u2)
+  z2 <- sqrt(-2*log(u1))*sin(2*pi*u2)
+  
+  normal1 <- niu + sigma*z1
+  normal2 <- niu + sigma*z2
+  
+  normal <- c(normal1, normal2)
+  
+  return(normal)
+}
+
+```
+
+# Box-Müller algorithm for one variable
+
+```{r}
+box_muller_one_variable <- function(n, niu = 0, sigma = 1)
+{
+  stopifnot(sigma > 0)
+  stopifnot(is.numeric(niu))
+  stopifnot(length(n) == 1)
+  
+  y1 <- rexp(n, 1)
+  y2 <- rexp(n, 1)
+  
+  accept <- ((1-y1)**2)/2 < y2
+  y1 <- y1[accept]
+  
+  u <- runif(length(y1), 0, 1)
+  u <- 2*u - 1
+  u <- sapply(u, sign)
+  y1 <- y1*u
+
+  y1 <- sigma*y1 + niu
+  
+  return(y1)
+}
+
+```
+
+# Acceptance-rejection method
+
+```{r}
+acceptance_rejection <- function(n, niu = 0, sigma = 1)
+{
+  stopifnot(sigma > 0)
+  stopifnot(is.numeric(niu))
+  stopifnot(length(n) == 1)
+  
+  u1 <- runif(n, 0, 1)
+  y <- rexp(n, 1)
+  
+  accept <- sqrt(exp(1))*u1*exp(-y) <= exp((-y**2)/2)
+  x <- y[accept]
+  
+  u2 <- runif(length(x), 0, 1)
+  u2 <- 2*u2 - 1
+  u2 <- sapply(u2, sign)
+  x <- x*u2
+  
+  x <- sigma*x + niu
+  
+  return(x)
+}
+
+```
+
+# Marsaglia-Bray algorithm
+
+```{r}
+marsaglia <- function(n, niu = 0, sigma = 1)
+{
+  stopifnot(sigma > 0)
+  stopifnot(is.numeric(niu))
+  stopifnot(length(n) == 1)
+  
+  u1 <- runif(n, 0, 1)
+  u2 <- runif(n, 0, 1)
+  
+  u1 <- 2*u1 - 1
+  u2 <- 2*u2 - 1
+  
+  r <- sqrt(u1**2 + u2**2)
+  accept <- u1**2 + u2**2 <= 1
+  
+  r <- r[accept]
+  
+  z1 <- sqrt(-2*log(r**2))*u1[accept]/r
+  z2 <- sqrt(-2*log(r**2))*u2[accept]/r
+  
+  normal1 <- niu + sigma*z1
+  normal2 <- niu + sigma*z2
+  
+  normal <- c(normal1, normal2)
+  
+  return(normal)
+}
+
+```
+
+# Results for one variable generated from each algorithm (for n = 1000)
+
+```{r}
+# Generating variables from each algorithm
+bm <- box_muller(1000, 0, 1)
+bmov <- box_muller_one_variable(1000, 0, 1)
+ar <- acceptance_rejection(1000, 0, 1)
+mb <- marsaglia(1000, 0, 1)
+
+# Getting two independent variables returned from Box-Müller and Marsaglia-Bray algorithms
+bm1 <- bm[1:(length(bm)/2)]
+bm2 <- bm[((length(bm)/2)+1):(length(bm))]
+mb1 <- mb[1:(length(mb)/2)]
+mb2 <- mb[((length(mb)/2)+1):(length(mb))]
+
+# First 100 values received using each algorithm
+print("Box_Müller X1:")
+head(bm1, 100L)
+print("Box_Müller X2:")
+head(bm2, 100L)
+print("Box_Müller_one_variable:")
+head(bmov, 100L)
+print("Acceptance_Rejection:")
+head(ar, 100L)
+print("Marsaglia X1:")
+head(mb1, 100L)
+print("Marsaglia X2:")
+head(mb2, 100L)
+
+```
+
+```{r}
+# Number of received values
+print(paste("Length of Box_Muller X1:", length(bm1)))
+print(paste("Length of Box_Muller X2:", length(bm2)))
+print(paste("Length of Box_Muller_one_variable:", length(bmov)))
+print(paste("Length of Acceptance_Rejection:", length(ar)))
+print(paste("Length of Marsaglia X1:", length(mb1)))
+print(paste("Length of Marsaglia X2:", length(mb2)))
+
+```
+
+```{r}
+# Kolmogorov-Smirnov test: variables are distributed from normal distribution vs they are not
+ks.test(bm1, rnorm(length(bm1), 0, 1))
+ks.test(bm2, rnorm(length(bm2), 0, 1))
+ks.test(bmov, rnorm(length(bmov), 0, 1))
+ks.test(ar, rnorm(length(ar), 0, 1))
+ks.test(mb1, rnorm(length(mb1), 0, 1))
+ks.test(mb2, rnorm(length(mb2), 0, 1))
+
+```
+
+```{r}
+# Shapiro-Wilk test: variables are distributed from normal distribution vs they are not
+shapiro.test(bm1)
+shapiro.test(bm2)
+shapiro.test(bmov)
+shapiro.test(ar)
+shapiro.test(mb1)
+shapiro.test(mb2)
+
+```
+
+```{r}
+# QQ-plots for each variable in order to verify if they are normally distributed
+qqnorm(bm1, main = "Box-Müller X1")
+qqline(bm1, col="red")
+
+qqnorm(bm2, main = "Box-Müller X2")
+qqline(bm2, col="red")
+
+qqnorm(bmov, main = "Box-Müller one variable")
+qqline(bmov, col="red")
+
+qqnorm(ar, main = "Acceptance-Rejection")
+qqline(ar, col="red")
+
+qqnorm(mb1, main = "Marsaglia X1")
+qqline(mb1, col="red")
+
+qqnorm(mb2, main = "Marsaglia X2")
+qqline(mb2, col="red")
+
+```
+
+# Experimental part - verifying algorithms using 100 samples received from each algorithm
+
+```{r}
+# In lists tested parameters will be kept
+bm1MeanLength100 <- list()
+bm2MeanLength100 <- list()
+bmovMeanLength100 <- list()
+arMeanLength100 <- list()
+mb1MeanLength100 <- list()
+mb2MeanLength100 <- list()
+
+bm1MeanKS100 <- list()
+bm2MeanKS100 <- list()
+bmovMeanKS100 <- list()
+arMeanKS100 <- list()
+mb1MeanKS100 <- list()
+mb2MeanKS100 <- list()
+
+bm1MeanShapiro100 <- list()
+bm2MeanShapiro100 <- list()
+bmovMeanShapiro100 <- list()
+arMeanShapiro100 <- list()
+mb1MeanShapiro100 <- list()
+mb2MeanShapiro100 <- list()
+
+bm1MeanLength1000 <- list()
+bm2MeanLength1000 <- list()
+bmovMeanLength1000 <- list()
+arMeanLength1000 <- list()
+mb1MeanLength1000 <- list()
+mb2MeanLength1000 <- list()
+
+bm1MeanKS1000 <- list()
+bm2MeanKS1000 <- list()
+bmovMeanKS1000 <- list()
+arMeanKS1000 <- list()
+mb1MeanKS1000 <- list()
+mb2MeanKS1000 <- list()
+
+bm1MeanShapiro1000 <- list()
+bm2MeanShapiro1000 <- list()
+bmovMeanShapiro1000 <- list()
+arMeanShapiro1000 <- list()
+mb1MeanShapiro1000 <- list()
+mb2MeanShapiro1000 <- list()
+
+bm1MeanLength10000 <- list()
+bm2MeanLength10000 <- list()
+bmovMeanLength10000 <- list()
+arMeanLength10000 <- list()
+mb1MeanLength10000 <- list()
+mb2MeanLength10000 <- list()
+
+bm1MeanKS10000 <- list()
+bm2MeanKS10000 <- list()
+bmovMeanKS10000 <- list()
+arMeanKS10000 <- list()
+mb1MeanKS10000 <- list()
+mb2MeanKS10000 <- list()
+
+bm1MeanLength100000 <- list()
+bm2MeanLength100000 <- list()
+bmovMeanLength100000 <- list()
+arMeanLength100000 <- list()
+mb1MeanLength100000 <- list()
+mb2MeanLength100000 <- list()
+
+bm1MeanKS100000 <- list()
+bm2MeanKS100000 <- list()
+bmovMeanKS100000 <- list()
+arMeanKS100000 <- list()
+mb1MeanKS100000 <- list()
+mb2MeanKS100000 <- list()
+
+```
+
+# For n = 100 (generating max 100 values)
+
+```{r}
+for (i in 1:100)
+{
+  # Generating variables from each algorithm
+  bm <- box_muller(100, 0, 1)
+  bmov <- box_muller_one_variable(100, 0, 1)
+  ar <- acceptance_rejection(100, 0, 1)
+  mb <- marsaglia(100, 0, 1)
+
+  # Getting two independent variables returned from Box-Müller and Marsaglia-Bray algorithms
+  bm1 <- bm[1:(length(bm)/2)]
+  bm2 <- bm[((length(bm)/2)+1):(length(bm))]
+  mb1 <- mb[1:(length(mb)/2)]
+  mb2 <- mb[((length(mb)/2)+1):(length(mb))]
+  
+  # Getting numbers of values
+  bm1MeanLength100[i] <- length(bm1)
+  bm2MeanLength100[i] <- length(bm2)
+  bmovMeanLength100[i] <- length(bmov)
+  arMeanLength100[i] <- length(ar)
+  mb1MeanLength100[i] <- length(mb1)
+  mb2MeanLength100[i] <- length(mb2)
+  
+  # Getting p-values using Kolmogorov-Smirnov test: variables are distributed from normal distribution vs they are not
+  bm1MeanKS100[i] <- ks.test(bm1, rnorm(length(bm1), 0, 1))$p.value
+  bm2MeanKS100[i] <- ks.test(bm2, rnorm(length(bm2), 0, 1))$p.value
+  bmovMeanKS100[i] <- ks.test(bmov, rnorm(length(bmov), 0, 1))$p.value
+  arMeanKS100[i] <- ks.test(ar, rnorm(length(ar), 0, 1))$p.value
+  mb1MeanKS100[i] <- ks.test(mb1, rnorm(length(mb1), 0, 1))$p.value
+  mb2MeanKS100[i] <- ks.test(mb2, rnorm(length(mb2), 0, 1))$p.value
+  
+  # Getting p-values using Shapiro-Wilk test: variables are distributed from normal distribution vs they are not
+  bm1MeanShapiro100[i] <- shapiro.test(bm1)$p.value
+  bm2MeanShapiro100[i] <- shapiro.test(bm2)$p.value
+  bmovMeanShapiro100[i] <- shapiro.test(bmov)$p.value
+  arMeanShapiro100[i] <- shapiro.test(ar)$p.value
+  mb1MeanShapiro100[i] <- shapiro.test(mb1)$p.value
+  mb2MeanShapiro100[i] <- shapiro.test(mb2)$p.value
+}
+
+```
+
+# For n = 1000 (generating max 1000 values)
+
+```{r}
+for (i in 1:100)
+{
+  # Generating variables from each algorithm
+  bm <- box_muller(1000, 0, 1)
+  bmov <- box_muller_one_variable(1000, 0, 1)
+  ar <- acceptance_rejection(1000, 0, 1)
+  mb <- marsaglia(1000, 0, 1)
+
+  # Getting two independent variables returned from Box-Müller and Marsaglia-Bray algorithms
+  bm1 <- bm[1:(length(bm)/2)]
+  bm2 <- bm[((length(bm)/2)+1):(length(bm))]
+  mb1 <- mb[1:(length(mb)/2)]
+  mb2 <- mb[((length(mb)/2)+1):(length(mb))]
+  
+  # Getting numbers of values
+  bm1MeanLength1000[i] <- length(bm1)
+  bm2MeanLength1000[i] <- length(bm2)
+  bmovMeanLength1000[i] <- length(bmov)
+  arMeanLength1000[i] <- length(ar)
+  mb1MeanLength1000[i] <- length(mb1)
+  mb2MeanLength1000[i] <- length(mb2)
+  # Getting p-values using Kolmogorov-Smirnov test: variables are distributed from normal distribution vs they are not
+  bm1MeanKS1000[i] <- ks.test(bm1, rnorm(length(bm1), 0, 1))$p.value
+  bm2MeanKS1000[i] <- ks.test(bm2, rnorm(length(bm2), 0, 1))$p.value
+  bmovMeanKS1000[i] <- ks.test(bmov, rnorm(length(bmov), 0, 1))$p.value
+  arMeanKS1000[i] <- ks.test(ar, rnorm(length(ar), 0, 1))$p.value
+  mb1MeanKS1000[i] <- ks.test(mb1, rnorm(length(mb1), 0, 1))$p.value
+  mb2MeanKS1000[i] <- ks.test(mb2, rnorm(length(mb2), 0, 1))$p.value
+  
+  # Getting p-values using Shapiro-Wilk test: variables are distributed from normal distribution vs they are not
+  bm1MeanShapiro1000[i] <- shapiro.test(bm1)$p.value
+  bm2MeanShapiro1000[i] <- shapiro.test(bm2)$p.value
+  bmovMeanShapiro1000[i] <- shapiro.test(bmov)$p.value
+  arMeanShapiro1000[i] <- shapiro.test(ar)$p.value
+  mb1MeanShapiro1000[i] <- shapiro.test(mb1)$p.value
+  mb2MeanShapiro1000[i] <- shapiro.test(mb2)$p.value
+}
+
+```
+
+# For n = 10000 (generating max 10000 values)
+
+```{r}
+for (i in 1:100)
+{
+  # Generating variables from each algorithm
+  bm <- box_muller(10000, 0, 1)
+  bmov <- box_muller_one_variable(10000, 0, 1)
+  ar <- acceptance_rejection(10000, 0, 1)
+  mb <- marsaglia(10000, 0, 1)
+
+  # Getting two independent variables returned from Box-Müller and Marsaglia-Bray algorithms
+  bm1 <- bm[1:(length(bm)/2)]
+  bm2 <- bm[((length(bm)/2)+1):(length(bm))]
+  mb1 <- mb[1:(length(mb)/2)]
+  mb2 <- mb[((length(mb)/2)+1):(length(mb))]
+  
+  # Getting numbers of values
+  bm1MeanLength10000[i] <- length(bm1)
+  bm2MeanLength10000[i] <- length(bm2)
+  bmovMeanLength10000[i] <- length(bmov)
+  arMeanLength10000[i] <- length(ar)
+  mb1MeanLength10000[i] <- length(mb1)
+  mb2MeanLength10000[i] <- length(mb2)
+  
+  # Getting p-values using Kolmogorov-Smirnov test: variables are distributed from normal distribution vs they are not
+  bm1MeanKS10000[i] <- ks.test(bm1, rnorm(length(bm1), 0, 1))$p.value
+  bm2MeanKS10000[i] <- ks.test(bm2, rnorm(length(bm2), 0, 1))$p.value
+  bmovMeanKS10000[i] <- ks.test(bmov, rnorm(length(bmov), 0, 1))$p.value
+  arMeanKS10000[i] <- ks.test(ar, rnorm(length(ar), 0, 1))$p.value
+  mb1MeanKS10000[i] <- ks.test(mb1, rnorm(length(mb1), 0, 1))$p.value
+  mb2MeanKS10000[i] <- ks.test(mb2, rnorm(length(mb2), 0, 1))$p.value
+}
+
+```
+
+# For n = 100000 (generating max 100000 values)
+
+```{r}
+for (i in 1:100)
+{
+  # Generating variables from each algorithm
+  bm <- box_muller(100000, 0, 1)
+  bmov <- box_muller_one_variable(100000, 0, 1)
+  ar <- acceptance_rejection(100000, 0, 1)
+  mb <- marsaglia(100000, 0, 1)
+
+  # Getting two independent variables returned from Box-Müller and Marsaglia-Bray algorithms
+  bm1 <- bm[1:(length(bm)/2)]
+  bm2 <- bm[((length(bm)/2)+1):(length(bm))]
+  mb1 <- mb[1:(length(mb)/2)]
+  mb2 <- mb[((length(mb)/2)+1):(length(mb))]
+  
+  # Getting numbers of values
+  bm1MeanLength100000[i] <- length(bm1)
+  bm2MeanLength100000[i] <- length(bm2)
+  bmovMeanLength100000[i] <- length(bmov)
+  arMeanLength100000[i] <- length(ar)
+  mb1MeanLength100000[i] <- length(mb1)
+  mb2MeanLength100000[i] <- length(mb2)
+  
+  # Getting p-values using Kolmogorov-Smirnov test: variables are distributed from normal distribution vs they are not
+  bm1MeanKS100000[i] <- ks.test(bm1, rnorm(length(bm1), 0, 1))$p.value
+  bm2MeanKS100000[i] <- ks.test(bm2, rnorm(length(bm2), 0, 1))$p.value
+  bmovMeanKS100000[i] <- ks.test(bmov, rnorm(length(bmov), 0, 1))$p.value
+  arMeanKS100000[i] <- ks.test(ar, rnorm(length(ar), 0, 1))$p.value
+  mb1MeanKS100000[i] <- ks.test(mb1, rnorm(length(mb1), 0, 1))$p.value
+  mb2MeanKS100000[i] <- ks.test(mb2, rnorm(length(mb2), 0, 1))$p.value
+}
+
+```
+
+# Mean values of parameters
+
+```{r}
+# Mean Numbers of values for n = 100
+print(paste("bm1MeanLength100: ", mean(sapply(bm1MeanLength100, mean))))
+print(paste("bm2MeanLength100: ", mean(sapply(bm2MeanLength100, mean))))
+print(paste("bmovMeanLength100: ", mean(sapply(bmovMeanLength100, mean))))
+print(paste("arMeanLength100: ", mean(sapply(arMeanLength100, mean))))
+print(paste("mb1MeanLength100: ", mean(sapply(mb1MeanLength100, mean))))
+print(paste("mb2MeanLength100: ", mean(sapply(mb2MeanLength100, mean))))
+
+# Mean p-values using Kolmogorov-Smirnov test for n = 100
+print(paste("bm1MeanKS100: ", mean(sapply(bm1MeanKS100, mean))))
+print(paste("bm2MeanKS100: ", mean(sapply(bm2MeanKS100, mean))))
+print(paste("bmovMeanKS100: ", mean(sapply(bmovMeanKS100, mean))))
+print(paste("arMeanKS100: ", mean(sapply(arMeanKS100, mean))))
+print(paste("mb1MeanKS100: ", mean(sapply(mb1MeanKS100, mean))))
+print(paste("mb2MeanKS100: ", mean(sapply(mb2MeanKS100, mean))))
+
+# Mean p-values using Shapiro-Wilk test for n = 100
+print(paste("bm1MeanShapiro100: ", mean(sapply(bm1MeanShapiro100, mean))))
+print(paste("bm2MeanShapiro100: ", mean(sapply(bm2MeanShapiro100, mean))))
+print(paste("bmovMeanShapiro100: ", mean(sapply(bmovMeanShapiro100, mean))))
+print(paste("arMeanShapiro100: ", mean(sapply(arMeanShapiro100, mean))))
+print(paste("mb1MeanShapiro100: ", mean(sapply(mb1MeanShapiro100, mean))))
+print(paste("mb2MeanShapiro100: ", mean(sapply(mb2MeanShapiro100, mean))))
+
+# Mean Numbers of values for n = 1000
+print(paste("bm1MeanLength1000: ", mean(sapply(bm1MeanLength1000, mean))))
+print(paste("bm2MeanLength1000: ", mean(sapply(bm2MeanLength1000, mean))))
+print(paste("bmovMeanLength1000: ", mean(sapply(bmovMeanLength1000, mean))))
+print(paste("arMeanLength1000: ", mean(sapply(arMeanLength1000, mean))))
+print(paste("mb1MeanLength1000: ", mean(sapply(mb1MeanLength1000, mean))))
+print(paste("mb2MeanLength1000: ", mean(sapply(mb2MeanLength1000, mean))))
+
+# Mean p-values using Kolmogorov-Smirnov test for n = 1000
+print(paste("bm1MeanKS1000: ", mean(sapply(bm1MeanKS1000, mean))))
+print(paste("bm2MeanKS1000: ", mean(sapply(bm2MeanKS1000, mean))))
+print(paste("bmovMeanKS1000: ", mean(sapply(bmovMeanKS1000, mean))))
+print(paste("arMeanKS1000: ", mean(sapply(arMeanKS1000, mean))))
+print(paste("mb1MeanKS1000: ", mean(sapply(mb1MeanKS1000, mean))))
+print(paste("mb2MeanKS1000: ", mean(sapply(mb2MeanKS1000, mean))))
+
+# Mean p-values using Shapiro-Wilk test for n = 1000
+print(paste("bm1MeanShapiro1000: ", mean(sapply(bm1MeanShapiro1000, mean))))
+print(paste("bm2MeanShapiro1000: ", mean(sapply(bm2MeanShapiro1000, mean))))
+print(paste("bmovMeanShapiro1000: ", mean(sapply(bmovMeanShapiro1000, mean))))
+print(paste("arMeanShapiro1000: ", mean(sapply(arMeanShapiro1000, mean))))
+print(paste("mb1MeanShapiro1000: ", mean(sapply(mb1MeanShapiro1000, mean))))
+print(paste("mb2MeanShapiro1000: ", mean(sapply(mb2MeanShapiro1000, mean))))
+
+# Mean Numbers of values for n = 10000
+print(paste("bm1MeanLength10000: ", mean(sapply(bm1MeanLength10000, mean))))
+print(paste("bm2MeanLength10000: ", mean(sapply(bm2MeanLength10000, mean))))
+print(paste("bmovMeanLength10000: ", mean(sapply(bmovMeanLength10000, mean))))
+print(paste("arMeanLength10000: ", mean(sapply(arMeanLength10000, mean))))
+print(paste("mb1MeanLength10000: ", mean(sapply(mb1MeanLength10000, mean))))
+print(paste("mb2MeanLength10000: ", mean(sapply(mb2MeanLength10000, mean))))
+
+# Mean p-values using Kolmogorov-Smirnov test for n = 10000
+print(paste("bm1MeanKS10000: ", mean(sapply(bm1MeanKS10000, mean))))
+print(paste("bm2MeanKS10000: ", mean(sapply(bm2MeanKS10000, mean))))
+print(paste("bmovMeanKS10000: ", mean(sapply(bmovMeanKS10000, mean))))
+print(paste("arMeanKS10000: ", mean(sapply(arMeanKS10000, mean))))
+print(paste("mb1MeanKS10000: ", mean(sapply(mb1MeanKS10000, mean))))
+print(paste("mb2MeanKS10000: ", mean(sapply(mb2MeanKS10000, mean))))
+
+# Mean Numbers of values for n = 100000
+print(paste("bm1MeanLength100000: ", mean(sapply(bm1MeanLength100000, mean))))
+print(paste("bm2MeanLength100000: ", mean(sapply(bm2MeanLength100000, mean))))
+print(paste("bmovMeanLength100000: ", mean(sapply(bmovMeanLength100000, mean))))
+print(paste("arMeanLength100000: ", mean(sapply(arMeanLength100000, mean))))
+print(paste("mb1MeanLength100000: ", mean(sapply(mb1MeanLength100000, mean))))
+print(paste("mb2MeanLength100000: ", mean(sapply(mb2MeanLength100000, mean))))
+
+# Mean p-values using Kolmogorov-Smirnov test for n = 100000
+print(paste("bm1MeanKS100000: ", mean(sapply(bm1MeanKS100000, mean))))
+print(paste("bm2MeanKS100000: ", mean(sapply(bm2MeanKS100000, mean))))
+print(paste("bmovMeanKS100000: ", mean(sapply(bmovMeanKS100000, mean))))
+print(paste("arMeanKS100000: ", mean(sapply(arMeanKS100000, mean))))
+print(paste("mb1MeanKS100000: ", mean(sapply(mb1MeanKS100000, mean))))
+print(paste("mb2MeanKS100000: ", mean(sapply(mb2MeanKS100000, mean))))
+
+```
+
+# Time of computing for 100 iterations and n = 100
+
+```{r}
+microbenchmark(box_muller(100, 0, 1), 
+               box_muller_one_variable(100, 0, 1),
+               acceptance_rejection(100, 0, 1), 
+               marsaglia(100, 0, 1))
+
+```
+
+# Time of computing for 100 iterations and n = 1000
+
+```{r}
+microbenchmark(box_muller(1000, 0, 1), 
+               box_muller_one_variable(1000, 0, 1),
+               acceptance_rejection(1000, 0, 1), 
+               marsaglia(1000, 0, 1))
+
+```
+
+# Time of computing for 100 iterations and n = 10000
+
+```{r}
+microbenchmark(box_muller(10000, 0, 1), 
+               box_muller_one_variable(10000, 0, 1),
+               acceptance_rejection(10000, 0, 1), 
+               marsaglia(10000, 0, 1))
+
+```
+
+# Time of computing for 100 iterations and n = 100000
+
+```{r}
+microbenchmark(box_muller(100000, 0, 1), 
+               box_muller_one_variable(100000, 0, 1),
+               acceptance_rejection(100000, 0, 1), 
+               marsaglia(100000, 0, 1))
+
+```
+
+```{r}
+# Number of p-values <= 0.05 using Kolmogorov-Smirnov test for n = 100
+print(paste("bm1CountKS100: ", length((sapply(bm1MeanKS100, mean) <= 0.05)[(sapply(bm1MeanKS100, mean) <= 0.05) == TRUE])))
+print(paste("bm2CountKS100: ", length((sapply(bm2MeanKS100, mean) <= 0.05)[(sapply(bm2MeanKS100, mean) <= 0.05) == TRUE])))
+print(paste("bmovCountKS100: ", length((sapply(bmovMeanKS100, mean) <= 0.05)[(sapply(bmovMeanKS100, mean) <= 0.05) == TRUE])))
+print(paste("arCountKS100: ", length((sapply(arMeanKS100, mean) <= 0.05)[(sapply(arMeanKS100, mean) <= 0.05) == TRUE])))
+print(paste("mb1CountKS100: ", length((sapply(mb1MeanKS100, mean) <= 0.05)[(sapply(mb1MeanKS100, mean) <= 0.05) == TRUE])))
+print(paste("mb2CountKS100: ", length((sapply(mb2MeanKS100, mean) <= 0.05)[(sapply(mb2MeanKS100, mean) <= 0.05) == TRUE])))
+
+# Number of p-values <= 0.05 using Shapiro-Wilk test for n = 100
+print(paste("bm1CountShapiro100: ", length((sapply(bm1MeanShapiro100, mean) <= 0.05)[(sapply(bm1MeanShapiro100, mean) <= 0.05) == TRUE])))
+print(paste("bm2CountShapiro100: ", length((sapply(bm2MeanShapiro100, mean) <= 0.05)[(sapply(bm2MeanShapiro100, mean) <= 0.05) == TRUE])))
+print(paste("bmovCountShapiro100: ", length((sapply(bmovMeanShapiro100, mean) <= 0.05)[(sapply(bmovMeanShapiro100, mean) <= 0.05) == TRUE])))
+print(paste("arCountShapiro100: ", length((sapply(arMeanShapiro100, mean) <= 0.05)[(sapply(arMeanShapiro100, mean) <= 0.05) == TRUE])))
+print(paste("mb1CountShapiro100: ", length((sapply(mb1MeanShapiro100, mean) <= 0.05)[(sapply(mb1MeanShapiro100, mean) <= 0.05) == TRUE])))
+print(paste("mb2CountShapiro100: ", length((sapply(mb2MeanShapiro100, mean) <= 0.05)[(sapply(mb2MeanShapiro100, mean) <= 0.05) == TRUE])))
+
+# Number of p-values <= 0.05 using Kolmogorov-Smirnov test for n = 1000
+print(paste("bm1CountKS1000: ", length((sapply(bm1MeanKS1000, mean) <= 0.05)[(sapply(bm1MeanKS1000, mean) <= 0.05) == TRUE])))
+print(paste("bm2CountKS1000: ", length((sapply(bm2MeanKS1000, mean) <= 0.05)[(sapply(bm2MeanKS1000, mean) <= 0.05) == TRUE])))
+print(paste("bmovCountKS1000: ", length((sapply(bmovMeanKS1000, mean) <= 0.05)[(sapply(bmovMeanKS1000, mean) <= 0.05) == TRUE])))
+print(paste("arCountKS1000: ", length((sapply(arMeanKS1000, mean) <= 0.05)[(sapply(arMeanKS1000, mean) <= 0.05) == TRUE])))
+print(paste("mb1CountKS1000: ", length((sapply(mb1MeanKS1000, mean) <= 0.05)[(sapply(mb1MeanKS1000, mean) <= 0.05) == TRUE])))
+print(paste("mb2CountKS1000: ", length((sapply(mb2MeanKS1000, mean) <= 0.05)[(sapply(mb2MeanKS1000, mean) <= 0.05) == TRUE])))
+
+# Number of p-values <= 0.05 using Shapiro-Wilk test for n = 1000
+print(paste("bm1CountShapiro1000: ", length((sapply(bm1MeanShapiro1000, mean) <= 0.05)[(sapply(bm1MeanShapiro1000, mean) <= 0.05) == TRUE])))
+print(paste("bm2CountShapiro1000: ", length((sapply(bm2MeanShapiro1000, mean) <= 0.05)[(sapply(bm2MeanShapiro1000, mean) <= 0.05) == TRUE])))
+print(paste("bmovCountShapiro1000: ", length((sapply(bmovMeanShapiro1000, mean) <= 0.05)[(sapply(bmovMeanShapiro1000, mean) <= 0.05) == TRUE])))
+print(paste("arCountShapiro1000: ", length((sapply(arMeanShapiro1000, mean) <= 0.05)[(sapply(arMeanShapiro1000, mean) <= 0.05) == TRUE])))
+print(paste("mb1CountShapiro1000: ", length((sapply(mb1MeanShapiro1000, mean) <= 0.05)[(sapply(mb1MeanShapiro1000, mean) <= 0.05) == TRUE])))
+print(paste("mb2CountShapiro1000: ", length((sapply(mb2MeanShapiro1000, mean) <= 0.05)[(sapply(mb2MeanShapiro1000, mean) <= 0.05) == TRUE])))
+
+# Number of p-values <= 0.05 using Kolmogorov-Smirnov test for n = 10000
+print(paste("bm1CountKS10000: ", length((sapply(bm1MeanKS10000, mean) <= 0.05)[(sapply(bm1MeanKS10000, mean) <= 0.05) == TRUE])))
+print(paste("bm2CountKS10000: ", length((sapply(bm2MeanKS10000, mean) <= 0.05)[(sapply(bm2MeanKS10000, mean) <= 0.05) == TRUE])))
+print(paste("bmovCountKS10000: ", length((sapply(bmovMeanKS10000, mean) <= 0.05)[(sapply(bmovMeanKS10000, mean) <= 0.05) == TRUE])))
+print(paste("arCountKS10000: ", length((sapply(arMeanKS10000, mean) <= 0.05)[(sapply(arMeanKS10000, mean) <= 0.05) == TRUE])))
+print(paste("mb1CountKS10000: ", length((sapply(mb1MeanKS10000, mean) <= 0.05)[(sapply(mb1MeanKS10000, mean) <= 0.05) == TRUE])))
+print(paste("mb2CountKS10000: ", length((sapply(mb2MeanKS10000, mean) <= 0.05)[(sapply(mb2MeanKS10000, mean) <= 0.05) == TRUE])))
+
+# Number of p-values <= 0.05 using Kolmogorov-Smirnov test for n = 100000
+print(paste("bm1CountKS100000: ", length((sapply(bm1MeanKS100000, mean) <= 0.05)[(sapply(bm1MeanKS100000, mean) <= 0.05) == TRUE])))
+print(paste("bm2CountKS100000: ", length((sapply(bm2MeanKS100000, mean) <= 0.05)[(sapply(bm2MeanKS100000, mean) <= 0.05) == TRUE])))
+print(paste("bmovCountKS100000: ", length((sapply(bmovMeanKS100000, mean) <= 0.05)[(sapply(bmovMeanKS100000, mean) <= 0.05) == TRUE])))
+print(paste("arCountKS100000: ", length((sapply(arMeanKS100000, mean) <= 0.05)[(sapply(arMeanKS100000, mean) <= 0.05) == TRUE])))
+print(paste("mb1CountKS100000: ", length((sapply(mb1MeanKS100000, mean) <= 0.05)[(sapply(mb1MeanKS100000, mean) <= 0.05) == TRUE])))
+print(paste("mb2CountKS100000: ", length((sapply(mb2MeanKS100000, mean) <= 0.05)[(sapply(mb2MeanKS100000, mean) <= 0.05) == TRUE])))
+
+```
